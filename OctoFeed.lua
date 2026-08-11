@@ -13,7 +13,7 @@
 -----------------------------------------------------------------------------]]
 
 local ADDON_NAME = "OctoFeed"
-local VERSION    = "0.9"
+local VERSION    = "0.11"
 local DB_VERSION = 1
 
 local format, floor, min   = string.format, math.floor, math.min
@@ -60,9 +60,36 @@ local IMPLIED_CHALLENGE = {
 -- Roster of the realm's challenges, used by /octo chal.
 local KNOWN_CHALLENGES = {
     "Slow & Steady", "Together Forever", "Hardcore Mode", "War Mode",
-    "Exhaustion", "Traveling Craftmaster", "Way of the Samurai",
+    "Exhaustion", "Traveling Craftmaster", "Artisan", "Way of the Samurai",
     "Vagrant's Endeavor", "Brewmaster", "Trial of Heroism",
     "Boaring Adventure", "Lunatic",
+}
+
+-- The announcements do not use the spellbook spelling, and "Slow and Steady"
+-- famously contains the word that a naive splitter cuts on. So challenges are
+-- not split on separators at all: the text is scanned for known names instead.
+-- Left side is what the server writes, right side is the canonical name.
+local CHALLENGE_ALIASES = {
+    { "slow and steady",       "Slow & Steady" },
+    { "slow & steady",         "Slow & Steady" },
+    { "together forever",      "Together Forever" },
+    { "war mode",              "War Mode" },
+    { "exhaustion",            "Exhaustion" },
+    { "traveling craftmaster", "Traveling Craftmaster" },
+    { "traveling craftsman",   "Traveling Craftmaster" },
+    { "artisan",               "Artisan" },
+    { "way of the samurai",    "Way of the Samurai" },
+    { "samurai",               "Way of the Samurai" },
+    { "vagrant's endeavor",    "Vagrant's Endeavor" },
+    { "vagrants endeavor",     "Vagrant's Endeavor" },
+    { "brewmaster",            "Brewmaster" },
+    { "trial of heroism",      "Trial of Heroism" },
+    { "heroism",               "Trial of Heroism" },
+    { "boaring adventure",     "Boaring Adventure" },
+    { "boaring",               "Boaring Adventure" },
+    { "lunatic",               "Lunatic" },
+    { "hardcore mode",         "Hardcore" },
+    { "hardcore",              "Hardcore" },
 }
 
 local REACTIONS = {
@@ -124,6 +151,7 @@ local RAW_NOISE = {
     "^Welcome to", "^There is no such command", "XP gain is", "player total",
     "^%[", "^|Hplayer:", " completed%.$", "^Loot", "^Auto%-loot",
     "^If you notice any bugs", "^Cannot find", "^Discovered ",
+    "^Please clear your WDB", "WDB folder",
     "experience gained", "^%d+ player", "bug%-tracker",
 }
 
@@ -236,34 +264,77 @@ local function LooksLikeMilestone(text)
     return false
 end
 
---- Render the challenge (or challenges) an announcement named as a bullet
--- list. Only one has ever been seen per line, but "A and B" or "A, B" would
--- split correctly if the server ever names more.
--- @return text, number of lines
-local function ChallengeBullets(chal)
-    if not chal or IMPLIED_CHALLENGE[chal] then return "", 0 end
+--- Which challenges does this text name, in the order they appear?
+-- Scanning for known names rather than splitting on separators is what keeps
+-- "Slow and Steady and Artisan" from becoming "Slow", "Steady", "Artisan".
+local function ChallengeList(raw)
+    local out, m = {}, 0
+    if not raw or raw == "" then return out end
 
-    local parts, n = {}, 0
-    local rest = chal
+    local low = strlower(raw)
+    local hits, n = {}, 0
+    for i = 1, tgetn(CHALLENGE_ALIASES) do
+        local alias, canon = CHALLENGE_ALIASES[i][1], CHALLENGE_ALIASES[i][2]
+        local pos = strfind(low, alias, 1, true)
+        if pos then
+            local seen = false
+            for j = 1, n do
+                if hits[j].name == canon then
+                    seen = true
+                    if pos < hits[j].pos then hits[j].pos = pos end
+                    break
+                end
+            end
+            if not seen then
+                n = n + 1
+                hits[n] = { pos = pos, name = canon }
+            end
+        end
+    end
+
+    if n > 0 then
+        for i = 2, n do                       -- insertion sort by position
+            local v, j = hits[i], i - 1
+            while j >= 1 and hits[j].pos > v.pos do
+                hits[j + 1] = hits[j]
+                j = j - 1
+            end
+            hits[j + 1] = v
+        end
+        for i = 1, n do
+            if not IMPLIED_CHALLENGE[hits[i].name] then
+                m = m + 1
+                out[m] = hits[i].name
+            end
+        end
+        return out
+    end
+
+    -- nothing recognised: fall back to separators so a brand new challenge
+    -- still shows up, even if its name gets split oddly
+    local rest = raw
     while true do
         local a, b = strfind(rest, ", ")
-        if not a then
-            local c, d = strfind(rest, " and ")
-            if not c then break end
-            a, b = c, d
-        end
+        if not a then break end
         local piece = Trim(strsub(rest, 1, a - 1))
-        if piece ~= "" then n = n + 1; parts[n] = piece end
+        if piece ~= "" then m = m + 1; out[m] = piece end
         rest = strsub(rest, b + 1)
     end
     rest = Trim(rest)
-    if rest ~= "" then n = n + 1; parts[n] = rest end
-    if n == 0 then return "", 0 end
+    if rest ~= "" and not IMPLIED_CHALLENGE[rest] then m = m + 1; out[m] = rest end
+    return out
+end
 
+--- Bullet list of the challenges an announcement named.
+-- @return text, number of lines
+local function ChallengeBullets(chal)
+    local list = ChallengeList(chal)
+    local n = tgetn(list)
+    if n == 0 then return "", 0 end
     local text = ""
     for i = 1, n do
         if i > 1 then text = text .. "\n" end
-        text = text .. BULLET .. parts[i]
+        text = text .. BULLET .. list[i]
     end
     return text, n
 end
