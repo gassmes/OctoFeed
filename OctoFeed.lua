@@ -13,7 +13,7 @@
 -----------------------------------------------------------------------------]]
 
 local ADDON_NAME = "OctoFeed"
-local VERSION    = "0.7"
+local VERSION    = "0.8"
 local DB_VERSION = 1
 
 local format, floor, min   = string.format, math.floor, math.min
@@ -145,6 +145,8 @@ local whoBusy       = false
 local whoName       = nil
 local whoAskedAt    = 0
 local lastWhoAt     = 0
+local whoPanelWasUp = false   -- was the friends panel already open before we asked
+local whoHideUntil  = 0       -- keep shoving the panel back down for a moment
 
 local WireFrameScripts        -- defined after the click handlers exist
 local frame, bgTexture, nameText, levelText, chalText, causeText, zoneText
@@ -394,6 +396,18 @@ local function FinishWho()
     if SetWhoToUI then SetWhoToUI(0) end
 end
 
+--- SetWhoToUI(1) hands the answer to the interface, and the default handler
+-- helpfully pops the friends window open with it. Push it back down - but only
+-- if the player did not have it open already, and for a short while, because
+-- Blizzard's handler may run a frame after ours.
+local function KeepWhoPanelDown()
+    if whoHideUntil == 0 or GetTime() > whoHideUntil then return end
+    if whoPanelWasUp then return end
+    if FriendsFrame and FriendsFrame:IsVisible() then
+        if HideUIPanel then HideUIPanel(FriendsFrame) else FriendsFrame:Hide() end
+    end
+end
+
 local function PumpWho()
     if whoBusy or tgetn(whoQueue) == 0 then return end
     if (GetTime() - lastWhoAt) < 4 then return end     -- be gentle with the server
@@ -402,10 +416,12 @@ local function PumpWho()
     for i = 2, tgetn(whoQueue) do n = n + 1; rest[n] = whoQueue[i] end
     whoQueue = rest
 
-    whoBusy    = true
-    whoName    = name
-    whoAskedAt = GetTime()
-    lastWhoAt  = GetTime()
+    whoBusy       = true
+    whoName       = name
+    whoAskedAt    = GetTime()
+    lastWhoAt     = GetTime()
+    whoPanelWasUp = (FriendsFrame and FriendsFrame:IsVisible()) and true or false
+    whoHideUntil  = GetTime() + 2
     if SetWhoToUI then SetWhoToUI(1) end
     SendWho("n-" .. name)
 end
@@ -825,6 +841,7 @@ local function OnWhoResult()
         end
     end
     FinishWho()
+    KeepWhoPanelDown()
     Refresh()
 end
 
@@ -877,6 +894,7 @@ end)
 driver:SetScript("OnUpdate", function()
     if not db then return end
     PumpWho()
+    KeepWhoPanelDown()
     if whoBusy and (GetTime() - whoAskedAt) > 6 then FinishWho() end
     if frame and frame:IsVisible() and hideAt > 0 and GetTime() > hideAt then
         if not MouseIsOver(frame) then

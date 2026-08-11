@@ -1,0 +1,34 @@
+name: release
+
+# Tag a version (git tag v0.6 && git push --tags) and this publishes a zip whose
+# top folder is exactly "OctoFeed", which is what the game needs.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the version is consistent
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          TOC=$(grep -oP '^## Version:\s*\K\S+' OctoFeed.toc)
+          LUA=$(grep -oP 'local VERSION\s*=\s*"\K[^"]+' OctoFeed.lua)
+          echo "tag=$TAG toc=$TOC lua=$LUA"
+          test "$TAG" = "$TOC" || { echo "toc version does not match tag"; exit 1; }
+          test "$TAG" = "$LUA" || { echo "lua version does not match tag"; exit 1; }
+          grep -q "OctoFeed |cff20c0ff$TAG|r" OctoFeed.toc || { echo "title version does not match tag"; exit 1; }
+
+      - name: Package
+        run: |
+          mkdir -p dist/OctoFeed
+          cp OctoFeed.toc OctoFeed.lua *.tga dist/OctoFeed/
+          cd dist && zip -r "../OctoFeed-${GITHUB_REF_NAME}.zip" OctoFeed
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: OctoFeed-*.zip
+          generate_release_notes: true
