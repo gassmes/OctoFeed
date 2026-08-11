@@ -1,8 +1,8 @@
 ## Interface: 11200
-## Title: OctoFeed |cff20c0ff0.8|r
+## Title: OctoFeed |cff20c0ff0.9|r
 ## Author: for Eldar
 ## Notes: Death and level-up feed under the minimap with F / LOL / FK reactions. For vanilla 1.12-based realms.
-## Version: 0.8
+## Version: 0.9
 ## SavedVariables: OctoFeedDB
 
 OctoFeed.lua

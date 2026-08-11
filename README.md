@@ -73,20 +73,23 @@ mouse while it is visible, so it never eats clicks in a fight.
 Confirmed against live captured logs:
 
 ```
-A tragedy has occurred. Hardcore character Poweroffear (level 14) has fallen to
-Defias Pillager (level 15) in Alexston Farmstead. May this sacrifice not be forgotten.
+A tragedy has occurred. Hardcore character Kyneti (level 13) has fallen to
+Benny Blaanco (level 15) in Furlbrow's Pumpkin Farm. May this sacrifice not be forgotten.
 
-Paladin Suvi has reached level 20. As they ascend towards immortality, their glory
-grows! However, so too does the danger they face.
+Warrior Flappywappy has reached level 20. As they ascend towards immortality, ...
+Druid Lumren has reached level 20 while enduring the Slow and Steady challenge. ...
+Hunter Gabagooner has reached level 60, ascending towards immortality!
+Level 20 Paladin Thedefect has crossed over to the immortal realm, ...
 ```
 
-Note that the level-up line carries the class, so no `/who` is needed for it — the class
-is cached and reused if that player later dies.
+Two things worth knowing about those lines. The level-up carries the class, so no `/who`
+is needed for it — the class is cached and reused when that player later dies. And the
+announcements spell challenges differently from the spellbook (`Slow and Steady` vs
+`Slow & Steady`, `Samurai` vs `Way of the Samurai`), so parsed names are mapped back onto
+the canonical roster.
 
-Not captured live yet, so parsed on informed guesses: PvP deaths, environmental deaths,
-and the wording of an immortal transition. Anything the parser cannot turn into an event
-is stored and shown by `/octo log`; a line mentioning immortality that fails to parse also
-shouts in chat, because that is exactly the sample worth reporting.
+Still guesswork, because they have not been seen live yet: PvP deaths and environmental
+deaths. Anything the parser cannot turn into an event is stored and shown by `/octo log`.
 
 ## Notes on the vanilla client
 

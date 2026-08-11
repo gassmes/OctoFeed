@@ -13,7 +13,7 @@
 -----------------------------------------------------------------------------]]
 
 local ADDON_NAME = "OctoFeed"
-local VERSION    = "0.8"
+local VERSION    = "0.9"
 local DB_VERSION = 1
 
 local format, floor, min   = string.format, math.floor, math.min
@@ -123,6 +123,8 @@ local RAW_NOISE = {
     "^Experience gained", "^Quest accepted", "^Received", "^You ", "^Your ",
     "^Welcome to", "^There is no such command", "XP gain is", "player total",
     "^%[", "^|Hplayer:", " completed%.$", "^Loot", "^Auto%-loot",
+    "^If you notice any bugs", "^Cannot find", "^Discovered ",
+    "experience gained", "^%d+ player", "bug%-tracker",
 }
 
 -- Words that smell like a milestone we have not captured yet. A line carrying
@@ -171,6 +173,23 @@ for i = 1, tgetn(CLASS_LIST) do CLASS_SET[CLASS_LIST[i]] = true end
 
 local function IsClassWord(w)
     return w ~= nil and CLASS_SET[strupper(w)] == true
+end
+
+--- The announcements spell challenges differently from the spellbook:
+--- "Slow and Steady" vs "Slow & Steady", "Samurai" vs "Way of the Samurai".
+--- Map whatever the server said onto the canonical roster name.
+local function NormalizeChallenge(raw)
+    if not raw then return nil end
+    local n = gsub(raw, "^%s*(.-)%s*$", "%1")
+    if n == "" then return nil end
+    local cmp = strlower(gsub(n, " and ", " & "))
+    if strlen(cmp) >= 4 then
+        for i = 1, tgetn(KNOWN_CHALLENGES) do
+            local k = KNOWN_CHALLENGES[i]
+            if strfind(strlower(k), cmp, 1, true) then return k end
+        end
+    end
+    return n
 end
 
 --- string.find wrapper that returns only the captures.
@@ -316,9 +335,30 @@ local function ParseAnnouncement(text)
     -- challenge announcements are accepted. Everything similar is logged.
     local name, lvl, chal
 
-    -- CONFIRMED on a live realm: the class is part of the line, saving a /who
-    -- "Paladin Suvi has reached level 20. As they ascend towards immortality..."
-    local cls, nm, lv = Cap(text, "^(%a+) (%S+) has reached level (%d+)")
+    -- CONFIRMED: leaving hardcore for the PvE realm. Checked first because the
+    -- line also contains "immortal", and because it leads with the level:
+    -- "Level 20 Paladin Thedefect has crossed over to the immortal realm, ..."
+    local ilvl, icls, inm = Cap(text,
+        "^Level (%d+) (%a+) (%S+) has crossed over to the immortal realm")
+    if inm then
+        return { kind = "immortal", name = inm, level = ilvl,
+                 class = (IsClassWord(icls) and icls or nil) }
+    end
+
+    -- CONFIRMED: the class is part of the line, which saves a /who.
+    -- With a challenge:
+    --   "Druid Lumren has reached level 20 while enduring the Slow and Steady challenge."
+    -- Without:
+    --   "Paladin Suvi has reached level 20. As they ascend towards immortality..."
+    --   "Hunter Gabagooner has reached level 60, ascending towards immortality!"
+    local cls, nm, lv, ch = Cap(text,
+        "^(%a+) (%S+) has reached level (%d+) while enduring the (.-) challenge")
+    if IsClassWord(cls) then
+        return { kind = "level", name = nm, level = lv, class = cls,
+                 challenge = NormalizeChallenge(ch) }
+    end
+
+    cls, nm, lv = Cap(text, "^(%a+) (%S+) has reached level (%d+)")
     if IsClassWord(cls) then
         return { kind = "level", name = nm, level = lv, class = cls }
     end
@@ -330,7 +370,8 @@ local function ParseAnnouncement(text)
 
     name, lvl, chal = Cap(text, "^(%S+) .-reached level (%d+) in (.-)[%.!]")
     if name then
-        return { kind = "level", name = name, level = lvl, challenge = Trim(chal) }
+        return { kind = "level", name = name, level = lvl,
+                 challenge = NormalizeChallenge(chal) }
     end
 
     name = Cap(text, "^(%S+) has transcended death")
